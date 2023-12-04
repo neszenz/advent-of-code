@@ -1,50 +1,119 @@
-use std::collections::HashMap;
+use std::vec::Vec;
 use regex::Regex;
+use lazy_static::lazy_static;
 
 const RESOURCE_FILE_PATH: &str = "res/input";
+
+lazy_static! {
+    static ref GAME_RECORD_PATTERN: Regex = Regex::new(r".*\s(\d*):(.*)$").unwrap();
+    static ref ENTRY_PATTERN: Regex = Regex::new(r"(\d*)\s*(\w*)$").unwrap();
+}
+
+enum Entry {
+    Red(i32),
+    Green(i32),
+    Blue(i32),
+}
+
+impl From<&str> for Entry {
+    fn from(entry_string: &str) -> Self {
+        let captures = ENTRY_PATTERN.captures(entry_string).unwrap();
+        let value = captures.get(1).unwrap().as_str().parse::<i32>().unwrap();
+        let label = captures.get(2).unwrap().as_str();
+
+        match label {
+            "red" => Entry::Red(value),
+            "green" => Entry::Green(value),
+            "blue" => Entry::Blue(value),
+            _ => panic!("label={} cannot be matched to either 'red', 'green' or 'blue'", label)
+        }
+    }
+}
+
+struct BallCount {
+    n_red: i32,
+    n_green: i32,
+    n_blue: i32,
+}
+
+impl From<Vec<Entry>> for BallCount {
+    fn from(entries: Vec<Entry>) -> Self {
+        let mut red_entries: Vec<i32> = Vec::new();
+        let mut green_entries: Vec<i32> = Vec::new();
+        let mut blue_entries: Vec<i32> = Vec::new();
+
+        for e in entries {
+            match e {
+                Entry::Red(value) => red_entries.push(value),
+                Entry::Green(v) => green_entries.push(v),
+                Entry::Blue(v) => blue_entries.push(v)
+            }
+        }
+
+        BallCount {
+            n_red: red_entries.iter().sum(),
+            n_green: green_entries.iter().sum(),
+            n_blue: blue_entries.iter().sum(),
+        }
+    }
+}
+
+struct Game {
+    id: i32,
+    requirements: BallCount,
+}
+
+impl Game {
+    fn is_possible_for(self: &Game, given_balls: BallCount) -> bool {
+        let enought_red = given_balls.n_red >= self.requirements.n_red;
+        let enought_green = given_balls.n_green >= self.requirements.n_green;
+        let enought_blue = given_balls.n_blue >= self.requirements.n_blue;
+
+        enought_red && enought_green && enought_blue
+    }
+}
 
 fn main() {
     let input = std::fs::read_to_string(RESOURCE_FILE_PATH).expect("resource file can be loaded");
 
-    let word_to_number: HashMap<&str, &str> = HashMap::from([
-        ("one", "1"),
-        ("two", "2"),
-        ("three", "3"),
-        ("four", "4"),
-        ("five", "5"),
-        ("six", "6"),
-        ("seven", "7"),
-        ("eight", "8"),
-        ("nine", "9")
-    ]);
+    const GIVEN_LIMIT: BallCount = BallCount { n_red: 12, n_green: 13, n_blue: 14 };
 
-    let some_number = Regex::new(r"1|2|3|4|5|6|7|8|9|one|two|three|four|five|six|seven|eight|nine").unwrap();
-    let rebmun_emos = Regex::new(r"1|2|3|4|5|6|7|8|9|eno|owt|eerht|ruof|evif|xis|neves|thgie|enin").unwrap();
+    let mut games: Vec<Game> = Vec::new();
 
-    let result: i32 = input
-        .lines()
-        .map(|line| {
-            let first_match = some_number.find(line).unwrap().as_str();
+    let mut game_index: i32 = 0;
+    for line in input.lines() {
+        let c = GAME_RECORD_PATTERN.captures(line).unwrap();
+        assert!(c.len() == 3);
 
-            let enil = line.chars().rev().collect::<String>();
-            let last_match = rebmun_emos.find(&enil).unwrap().as_str().chars().rev().collect::<String>();
+        let game_id: i32 = c.get(1).unwrap().as_str().parse::<i32>().unwrap();
+        assert!(game_index + 1 == game_id);
 
-            let first = if first_match.len() == 1 {
-                first_match
-            }
-            else {
-                word_to_number[first_match]
-            };
-            let last = if last_match.len() == 1 {
-                last_match.as_str()
-            }
-            else {
-                word_to_number[last_match.as_str()]
-            };
+        let game_requirements = c
+            .get(2)
+            .unwrap()
+            .as_str()
+            .split(';')
+            .map(|item| item.trim())
+            .map(|r| {
+                let entries = r.split(',').map(|e| Entry::from(e)).collect::<Vec<Entry>>();
+                BallCount::from(entries)
+            })
+            .reduce(|lhs, rhs|
+                BallCount {
+                    n_red: lhs.n_red.max(rhs.n_red),
+                    n_green: lhs.n_green.max(rhs.n_green),
+                    n_blue: lhs.n_blue.max(rhs.n_blue),
+                }
+            ).unwrap();
 
-            (first.to_string() + &last.to_string()).parse::<i32>().unwrap()
-        })
-        .sum();
+        games.push(Game{ id: game_id, requirements: game_requirements });
+
+        game_index += 1;
+    }
+
+    let possible_games = games.iter().filter(|g| g.is_possible_for(GIVEN_LIMIT)).collect::<Vec<&Game>>();
+
+    let result: i32 = possible_games.iter().map(|g| (*g).id).sum();
 
     println!("result={}", result);
 }
