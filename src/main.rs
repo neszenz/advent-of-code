@@ -36,6 +36,10 @@ struct BallCount {
     n_blue: i32,
 }
 
+impl BallCount {
+    fn power(self: &BallCount) -> i32 { self.n_red * self.n_green * self.n_blue }
+}
+
 impl From<Vec<Entry>> for BallCount {
     fn from(entries: Vec<Entry>) -> Self {
         let mut red_entries: Vec<i32> = Vec::new();
@@ -76,8 +80,6 @@ impl Game {
 fn main() {
     let input = std::fs::read_to_string(RESOURCE_FILE_PATH).expect("resource file can be loaded");
 
-    const GIVEN_LIMIT: BallCount = BallCount { n_red: 12, n_green: 13, n_blue: 14 };
-
     let mut games: Vec<Game> = Vec::new();
 
     let mut game_index: i32 = 0;
@@ -111,9 +113,7 @@ fn main() {
         game_index += 1;
     }
 
-    let possible_games = games.iter().filter(|g| g.is_possible_for(GIVEN_LIMIT)).collect::<Vec<&Game>>();
-
-    let result: i32 = possible_games.iter().map(|g| (*g).id).sum();
+    let result: i32 = games.iter().map(|g| g.requirements.power()).sum();
 
     println!("result={}", result);
 }
