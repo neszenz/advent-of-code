@@ -16,6 +16,18 @@ struct SchematicNumberPosition {
     j_end: usize,
 }
 
+struct SchematicSymbolPosition {
+    i: usize,
+    j: usize,
+}
+
+struct SchematicNumberBoundingBox {
+    i_min: usize,
+    i_max: usize,
+    j_min: usize,
+    j_max: usize,
+}
+
 fn parse_engine_schematic(input: &String) -> (SchematicData, SchematicMetaData) {
     let schematic: SchematicData = input
         .lines()
@@ -43,7 +55,7 @@ fn parse_engine_schematic(input: &String) -> (SchematicData, SchematicMetaData) 
     (schematic, SchematicMetaData{ n_rows, n_columns, symbols })
 }
 
-fn scan_for_candidats(schematic: &SchematicData, meta: &SchematicMetaData) -> Vec<SchematicNumberPosition> {
+fn scan_for_candidates(schematic: &SchematicData, meta: &SchematicMetaData) -> Vec<SchematicNumberPosition> {
     let mut found_numbers: Vec<SchematicNumberPosition> = Vec::new();
     let mut scan_buffer: Vec<usize> = Vec::new();
 
@@ -81,16 +93,21 @@ fn scan_for_candidats(schematic: &SchematicData, meta: &SchematicMetaData) -> Ve
     found_numbers
 }
 
-fn is_part_number(schematic: &SchematicData, meta: &SchematicMetaData, candidat_pos: &SchematicNumberPosition) -> bool {
-    let i_begin = if candidat_pos.i == 0 { candidat_pos.i } else { candidat_pos.i - 1 };
-    let i_end = if candidat_pos.i == meta.n_rows - 1 { candidat_pos.i } else { candidat_pos.i + 1 };
-    let j_begin = if candidat_pos.j_begin == 0 { candidat_pos.j_begin } else { candidat_pos.j_begin - 1 };
-    let j_end = if candidat_pos.j_end == meta.n_columns - 1 { candidat_pos.j_end } else { candidat_pos.j_end + 1};
+fn snbb_from_number_position(meta: &SchematicMetaData, pos: &SchematicNumberPosition) -> SchematicNumberBoundingBox {
+    SchematicNumberBoundingBox{
+        i_min: if pos.i == 0 { pos.i } else { pos.i - 1 },
+        i_max: if pos.i == meta.n_rows - 1 { pos.i } else { pos.i + 1 },
+        j_min: if pos.j_begin == 0 { pos.j_begin } else { pos.j_begin - 1 },
+        j_max: if pos.j_end == meta.n_columns - 1 { pos.j_end } else { pos.j_end + 1},
+    }
+}
 
-    for i in i_begin..=i_end {
-        for j in j_begin..=j_end {
-            let cell = schematic[i][j];
-            if meta.symbols.contains(&cell) {
+fn is_part_number(schematic: &SchematicData, meta: &SchematicMetaData, candidate_pos: &SchematicNumberPosition) -> bool {
+    let snbb = snbb_from_number_position(meta, candidate_pos);
+
+    for i in snbb.i_min..=snbb.i_max {
+        for j in snbb.j_min..=snbb.j_max {
+            if meta.symbols.contains(&schematic[i][j]) {
                 return true;
             }
         }
@@ -114,9 +131,44 @@ fn main() {
 
     let (schematic, meta) = parse_engine_schematic(&input);
 
-    let candidats = scan_for_candidats(&schematic, &meta);
-    let part_numbers = candidats.iter().filter(|c| is_part_number(&schematic, &meta, c)).collect::<Vec<&SchematicNumberPosition>>();
+    let part_number_candidates = scan_for_candidates(&schematic, &meta);
+    let part_numbers = part_number_candidates.iter().filter(|c| is_part_number(&schematic, &meta, c)).collect::<Vec<&SchematicNumberPosition>>();
 
-    let result: i32 = part_numbers.iter().map(|n| value_of_schematic_number(&schematic, n)).sum();
+    let gears_candidates = {
+        let mut tmp: Vec<SchematicSymbolPosition> = Vec::new();
+
+        for i in 0..meta.n_rows {
+            for j in 0..meta.n_columns {
+                if schematic[i][j] == '*' {
+                    tmp.push(SchematicSymbolPosition { i , j });
+                }
+            }
+        }
+
+        tmp
+    };
+
+    let result: i32 = gears_candidates
+        .iter()
+        .map(|g| {
+            let adjacent_part_numbers = part_numbers
+                .iter()
+                .filter(|pn| {
+                    let bb = snbb_from_number_position(&meta, pn);
+                    bb.i_min <= g.i && g.i <= bb.i_max &&
+                    bb.j_min <= g.j && g.j <= bb.j_max
+                })
+                .cloned()
+                .collect::<Vec<&SchematicNumberPosition>>();
+
+            if adjacent_part_numbers.len() == 2 {
+                adjacent_part_numbers.iter().map(|pn| value_of_schematic_number(&schematic, pn)).product()
+            }
+            else {
+                0
+            }
+        })
+        .sum();
+
     println!("result={}", result);
 }
