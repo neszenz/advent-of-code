@@ -1,119 +1,122 @@
-use std::vec::Vec;
-use regex::Regex;
-use lazy_static::lazy_static;
+use std::collections::HashSet;
 
 const RESOURCE_FILE_PATH: &str = "res/input";
 
-lazy_static! {
-    static ref GAME_RECORD_PATTERN: Regex = Regex::new(r".*\s(\d*):(.*)$").unwrap();
-    static ref ENTRY_PATTERN: Regex = Regex::new(r"(\d*)\s*(\w*)$").unwrap();
+type SchematicData = Vec<Vec<char>>;
+
+struct SchematicMetaData {
+    n_rows: usize,
+    n_columns: usize,
+    symbols: HashSet<char>,
 }
 
-enum Entry {
-    Red(i32),
-    Green(i32),
-    Blue(i32),
+struct SchematicNumberPosition {
+    i: usize,
+    j_begin: usize,
+    j_end: usize,
 }
 
-impl From<&str> for Entry {
-    fn from(entry_string: &str) -> Self {
-        let captures = ENTRY_PATTERN.captures(entry_string).unwrap();
-        let value = captures.get(1).unwrap().as_str().parse::<i32>().unwrap();
-        let label = captures.get(2).unwrap().as_str();
+fn parse_engine_schematic(input: &String) -> (SchematicData, SchematicMetaData) {
+    let schematic: SchematicData = input
+        .lines()
+        .map(|l| l
+            .chars()
+            .collect::<Vec<char>>()
+        )
+        .collect::<Vec<Vec<char>>>();
 
-        match label {
-            "red" => Entry::Red(value),
-            "green" => Entry::Green(value),
-            "blue" => Entry::Blue(value),
-            _ => panic!("label={} cannot be matched to either 'red', 'green' or 'blue'", label)
-        }
+    let n_rows = schematic.len();
+
+    let n_columns = if n_rows == 0 { 0 } else { schematic[0].len() };
+    if !schematic.iter().all(|row| row.len() == n_columns ) {
+        panic!("inconsistent row length");
     }
+
+    let symbols = {
+        let mut tmp = schematic.iter().flatten().filter(|c| !c.is_numeric() && **c != '.').cloned().collect::<Vec<char>>();
+        tmp.sort();
+        tmp.dedup();
+
+        HashSet::from_iter(tmp.iter().cloned())
+    };
+
+    (schematic, SchematicMetaData{ n_rows, n_columns, symbols })
 }
 
-struct BallCount {
-    n_red: i32,
-    n_green: i32,
-    n_blue: i32,
-}
+fn scan_for_candidats(schematic: &SchematicData, meta: &SchematicMetaData) -> Vec<SchematicNumberPosition> {
+    let mut found_numbers: Vec<SchematicNumberPosition> = Vec::new();
+    let mut scan_buffer: Vec<usize> = Vec::new();
 
-impl BallCount {
-    fn power(self: &BallCount) -> i32 { self.n_red * self.n_green * self.n_blue }
-}
+    for i in 0..meta.n_rows {
+        for j in 0..meta.n_columns {
+            let cell = schematic[i][j];
 
-impl From<Vec<Entry>> for BallCount {
-    fn from(entries: Vec<Entry>) -> Self {
-        let mut red_entries: Vec<i32> = Vec::new();
-        let mut green_entries: Vec<i32> = Vec::new();
-        let mut blue_entries: Vec<i32> = Vec::new();
-
-        for e in entries {
-            match e {
-                Entry::Red(value) => red_entries.push(value),
-                Entry::Green(v) => green_entries.push(v),
-                Entry::Blue(v) => blue_entries.push(v)
+            if cell.is_numeric() {
+                scan_buffer.push(j);
+            }
+            else if scan_buffer.len() > 0 {
+                found_numbers.push(
+                    SchematicNumberPosition{
+                        i,
+                        j_begin: *scan_buffer.first().unwrap(),
+                        j_end: *scan_buffer.last().unwrap(),
+                    }
+                );
+                scan_buffer.clear();
             }
         }
 
-        BallCount {
-            n_red: red_entries.iter().sum(),
-            n_green: green_entries.iter().sum(),
-            n_blue: blue_entries.iter().sum(),
+        if !scan_buffer.is_empty() {
+            found_numbers.push(
+                SchematicNumberPosition{
+                    i,
+                    j_begin: *scan_buffer.first().unwrap(),
+                    j_end: *scan_buffer.last().unwrap(),
+                }
+            );
+            scan_buffer.clear();
         }
     }
+
+    found_numbers
 }
 
-struct Game {
-    id: i32,
-    requirements: BallCount,
-}
+fn is_part_number(schematic: &SchematicData, meta: &SchematicMetaData, candidat_pos: &SchematicNumberPosition) -> bool {
+    let i_begin = if candidat_pos.i == 0 { candidat_pos.i } else { candidat_pos.i - 1 };
+    let i_end = if candidat_pos.i == meta.n_rows - 1 { candidat_pos.i } else { candidat_pos.i + 1 };
+    let j_begin = if candidat_pos.j_begin == 0 { candidat_pos.j_begin } else { candidat_pos.j_begin - 1 };
+    let j_end = if candidat_pos.j_end == meta.n_columns - 1 { candidat_pos.j_end } else { candidat_pos.j_end + 1};
 
-impl Game {
-    fn is_possible_for(self: &Game, given_balls: BallCount) -> bool {
-        let enought_red = given_balls.n_red >= self.requirements.n_red;
-        let enought_green = given_balls.n_green >= self.requirements.n_green;
-        let enought_blue = given_balls.n_blue >= self.requirements.n_blue;
-
-        enought_red && enought_green && enought_blue
+    for i in i_begin..=i_end {
+        for j in j_begin..=j_end {
+            let cell = schematic[i][j];
+            if meta.symbols.contains(&cell) {
+                return true;
+            }
+        }
     }
+
+    return false;
+}
+
+fn value_of_schematic_number(schematic: &SchematicData, pos: &SchematicNumberPosition) -> i32 {
+    let mut number_string: String = String::new();
+
+    for j in pos.j_begin..=pos.j_end {
+        number_string.push(schematic[pos.i][j]);
+    }
+
+    number_string.parse::<i32>().unwrap()
 }
 
 fn main() {
     let input = std::fs::read_to_string(RESOURCE_FILE_PATH).expect("resource file can be loaded");
 
-    let mut games: Vec<Game> = Vec::new();
+    let (schematic, meta) = parse_engine_schematic(&input);
 
-    let mut game_index: i32 = 0;
-    for line in input.lines() {
-        let c = GAME_RECORD_PATTERN.captures(line).unwrap();
-        assert!(c.len() == 3);
+    let candidats = scan_for_candidats(&schematic, &meta);
+    let part_numbers = candidats.iter().filter(|c| is_part_number(&schematic, &meta, c)).collect::<Vec<&SchematicNumberPosition>>();
 
-        let game_id: i32 = c.get(1).unwrap().as_str().parse::<i32>().unwrap();
-        assert!(game_index + 1 == game_id);
-
-        let game_requirements = c
-            .get(2)
-            .unwrap()
-            .as_str()
-            .split(';')
-            .map(|item| item.trim())
-            .map(|r| {
-                let entries = r.split(',').map(|e| Entry::from(e)).collect::<Vec<Entry>>();
-                BallCount::from(entries)
-            })
-            .reduce(|lhs, rhs|
-                BallCount {
-                    n_red: lhs.n_red.max(rhs.n_red),
-                    n_green: lhs.n_green.max(rhs.n_green),
-                    n_blue: lhs.n_blue.max(rhs.n_blue),
-                }
-            ).unwrap();
-
-        games.push(Game{ id: game_id, requirements: game_requirements });
-
-        game_index += 1;
-    }
-
-    let result: i32 = games.iter().map(|g| g.requirements.power()).sum();
-
+    let result: i32 = part_numbers.iter().map(|n| value_of_schematic_number(&schematic, n)).sum();
     println!("result={}", result);
 }
