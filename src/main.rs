@@ -1,6 +1,6 @@
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::collections::HashSet;
+use std::collections::{HashSet, HashMap};
 
 const RESOURCE_FILE_PATH: &str = "res/input";
 
@@ -46,17 +46,6 @@ impl Scratchcard {
             .filter(|n| self.winning_numbers.contains(n))
             .count()
     }
-
-    fn n_points(self: &Self) -> i32 {
-        let n_matches = self.n_matches() as u32;
-
-        if n_matches == 0 {
-            0
-        }
-        else {
-            i32::from(2).pow(n_matches - 1)
-        }
-    }
 }
 
 fn main() {
@@ -67,10 +56,23 @@ fn main() {
         .map(|l| Scratchcard::from(l))
         .collect::<Vec<Scratchcard>>();
 
-    let result: i32 = scratchcards
-        .iter()
-        .map(|card| card.n_points())
-        .sum();
+    let result: usize = {
+        let mut cache: HashMap<usize, usize> = HashMap::new();
+
+        for i in (0..scratchcards.len()).rev() {
+            assert!(!cache.contains_key(&i));
+
+            let inherited_amout: usize = (0..scratchcards[i].n_matches())
+                .map(|offset| {
+                    cache.get(&(i+offset+1)).unwrap_or(&0)
+                })
+                .sum();
+
+            cache.insert(i, 1 + inherited_amout);
+        }
+
+        cache.iter().map(|item| item.1).sum()
+    };
 
     println!("result={}", result);
 }
