@@ -1,150 +1,222 @@
 const RESOURCE_FILE_PATH: &str = "res/input";
 
-struct AlmanacMapEntry {
-    destination_range_start: i64,
-    source_range_start: i64,
-    range_length: i64
+struct Range {
+    start: i64,
+    length: i64,
 }
 
-impl ToString for AlmanacMapEntry {
+impl Range {
     fn to_string(&self) -> String {
-        format!("{{ {}, {}, {} }}", self.destination_range_start, self.source_range_start, self.range_length)
+        format!("{{start={}, length={}}}", self.start, self.length)
+    }
+
+    fn end(&self) -> i64 {
+        if self.length == 0 {
+            self.start
+        }
+        else { 
+            self.start + self.length - 1
+        }
     }
 }
 
-struct AlmanacMap {
-    entries: Vec<AlmanacMapEntry>,
+struct Mapping {
+    transformation_tabel: Vec<(i64, i64)>,
 }
 
-impl From<&Vec<String>> for AlmanacMap {
-    fn from(section: &Vec<String>) -> Self {
-        assert!(section.len() > 2);
-
-        let header = &section[0];
-        assert!(header.ends_with("map:"));
-
-        let entries = {
-            section
-                .iter()
-                .skip(1)
-                .map(|ele| {
-                    let tmp = ele
-                        .split(' ')
-                        .map(|number_string| number_string.parse::<i64>().unwrap())
-                        .collect::<Vec<i64>>();
-
-                    assert!(tmp.len() == 3);
-
-                    AlmanacMapEntry {
-                        destination_range_start: tmp[0],
-                        source_range_start: tmp[1],
-                        range_length: tmp[2],
-                    }
-                })
-                .collect()
-        };
-
-        AlmanacMap { entries }
-    }
-}
-
-impl ToString for AlmanacMap {
+impl Mapping {
     fn to_string(&self) -> String {
-        let mut result = String::new();
+        let mut result: String = String::new();
 
-        result += format!("map (#entries={}):", self.entries.len()).as_str();
-
-        for entry in &self.entries {
-            result += format!("\n[{}, {}, {}]", entry.destination_range_start, entry.source_range_start, entry.range_length).as_str();
+        result += &format!("Mapping (#entries={}):\n", self.transformation_tabel.len());
+        for e in &self.transformation_tabel {
+            result += &format!("{}: {}\n", e.0, e.1);
         }
 
         result
     }
-}
 
-impl AlmanacMap {
-    fn resolve(self: &Self, source: i64) -> i64 {
-        let corresponding_entry_option = {
-            assert!(!self.entries.is_empty());
+    fn apply_value(&self, value: i64) -> i64 {
+        let offset = self.transformation_tabel
+            .iter()
+            .filter(|ele| ele.0 <= value)
+            .last()
+            .unwrap()
+            .1;
 
-            self.entries
+        value + offset
+    }
+
+    fn apply_range(&self, range: &Range) -> Vec<Range> {
+        let relevant_transformations: Vec<(i64,i64)> = {
+            self.transformation_tabel
                 .iter()
-                .filter(|e| e.source_range_start <= source)
-                .max_by(|lhs, rhs| lhs.source_range_start.cmp(&rhs.source_range_start))
+                .filter(|ele| range.start < ele.0)
+                .cloned()
+                .collect()
         };
 
-        if corresponding_entry_option.is_none() {
-            return source;
+        let mut result: Vec<Range> = Vec::new();
+
+        let mut next_start_at = range.start;
+        let mut remaining_length: i64 = range.length;
+
+        for i in 0..relevant_transformations.len() {
+            let t = &relevant_transformations[i];
+            assert!(next_start_at < t.0);
+
+            let length = if i+1 == relevant_transformations.len() {
+                remaining_length
+            }
+            else {
+                (t.0 - next_start_at).min(remaining_length)
+            };
+
+            result.push(
+                Range {
+                    start: self.apply_value(next_start_at),
+                    length,
+                }
+            );
+
+            next_start_at += length;
+            remaining_length -= length;
+
+            if remaining_length == 0 {
+                break;
+            }
         }
 
-        let corresponding_entry = corresponding_entry_option.unwrap();
-
-        assert!(corresponding_entry.source_range_start <= source);
-        let range_offset = source - corresponding_entry.source_range_start;
-
-        if range_offset <= corresponding_entry.range_length {
-            return corresponding_entry.destination_range_start + range_offset;
+        if remaining_length > 0 {
+            result.push(
+                Range {
+                    start: next_start_at,
+                    length: remaining_length,
+                }
+            );
         }
-        else {
-            return source;
-        }
+
+        result
+    }
+
+    fn apply_ranges(&self, ranges: &Vec<Range>) -> Vec<Range> {
+        ranges
+            .iter()
+            .flat_map(|ele| self.apply_range(ele))
+            .collect()
     }
 }
 
+
 struct Almanac {
-    seeds: Vec<i64>,
-    seed_to_soil_map: AlmanacMap,
-    soil_to_fertilizer_map: AlmanacMap,
-    fertilizer_to_water_map: AlmanacMap,
-    water_to_light_map: AlmanacMap,
-    light_to_temperature_map: AlmanacMap,
-    temperature_to_humidity_map: AlmanacMap,
-    humidity_to_location_map: AlmanacMap,
+    seed_ranges: Vec<Range>,
+    seed_to_soil_map: Mapping,
+    soil_to_fertilizer_map: Mapping,
+    fertilizer_to_water_map: Mapping,
+    water_to_light_map: Mapping,
+    light_to_temperature_map: Mapping,
+    temperature_to_humidity_map: Mapping,
+    humidity_to_location_map: Mapping,
 }
 
-impl From<&String> for Almanac {
-    fn from(input: &String) -> Self {
-        let sections: Vec<Vec<String>> = input
+impl From<&str> for Almanac {
+    fn from(input: &str) -> Self {
+        let sections: Vec<Vec<&str>> = input
             .lines()
-            .map(|l| l.to_string())
-            .collect::<Vec<String>>()
+            .map(|l| l)
+            .collect::<Vec<&str>>()
             .split(|l| l.is_empty())
             .map(|l| l.to_vec())
             .collect();
 
         assert!(sections.len() == 8);
 
-        let seeds: Vec<i64> = {
-            let content = &sections[0];
-            assert!(content.len() == 1);
+        fn parse_seeds(input: &Vec<&str>) -> Vec<Range> {
+            assert!(input.len() == 1);
+            assert!(input[0].starts_with("seeds:"));
 
-            let header_and_seed_list = content[0].split(' ').map(|ele| ele.to_string()).collect::<Vec<String>>();
-            assert!(header_and_seed_list[0] == "seeds:");
+            input[0]
+                .split(' ')
+                .skip(1)
+                .map(|ele| ele.parse::<i64>().unwrap())
+                .collect::<Vec<i64>>()
+                .chunks(2)
+                .map(|chunk| Range { start: chunk[0], length: chunk[1] })
+                .collect()
+        }
 
-            header_and_seed_list
+        fn parse_mapping(input: &Vec<&str>) -> Mapping {
+            assert!(input.len() >= 1);
+            assert!(input[0].ends_with("map:"));
+
+            struct MappingEntry {
+                range: Range,
+                offset: i64,
+            }
+
+            let mut mapping_entries: Vec<MappingEntry> = input
                 .iter()
                 .skip(1)
-                .map(|ele| ele.parse::<i64>().unwrap() )
-                .collect::<Vec<i64>>()
-        };
+                .map(|ele| {
+                    let tmp: Vec<i64> = ele
+                        .split(' ')
+                        .map(|number_string| number_string.parse::<i64>().unwrap())
+                        .collect();
 
-        let seed_to_soil_map = AlmanacMap::from(&sections[1]);
-        let soil_to_fertilizer_map = AlmanacMap::from(&sections[2]);
-        let fertilizer_to_water_map = AlmanacMap::from(&sections[3]);
-        let water_to_light_map = AlmanacMap::from(&sections[4]);
-        let light_to_temperature_map = AlmanacMap::from(&sections[5]);
-        let temperature_to_humidity_map = AlmanacMap::from(&sections[6]);
-        let humidity_to_location_map = AlmanacMap::from(&sections[7]);
+                    assert!(tmp.len() == 3);
+
+                    let destination_range_start = tmp[0];
+                    let source_range_start = tmp[1];
+                    let range_length = tmp[2];
+
+                    let offset = destination_range_start - source_range_start;
+
+                    MappingEntry {
+                        range: Range {
+                            start: source_range_start,
+                            length: range_length
+                        },
+                        offset
+                    }
+                })
+                .collect();
+
+            mapping_entries.sort_by(|lhs, rhs| lhs.range.start.cmp(&rhs.range.start));
+
+            let transformation_tabel: Vec<(i64, i64)> = {
+                let mut result: Vec<(i64,i64)> = Vec::new();
+
+                let mut next_to_handle: i64 = 0;
+
+                for entry in mapping_entries {
+                    assert!(next_to_handle <= entry.range.start);
+
+                    if next_to_handle < entry.range.start {
+                        result.push((next_to_handle, 0));
+                    }
+
+                    result.push((entry.range.start, entry.offset));
+
+                    next_to_handle = entry.range.end() + 1;
+                }
+
+                result.push((next_to_handle, 0));
+
+                result
+            };
+
+            Mapping { transformation_tabel }
+        }
 
         Almanac {
-            seeds,
-            seed_to_soil_map,
-            soil_to_fertilizer_map,
-            fertilizer_to_water_map,
-            water_to_light_map,
-            light_to_temperature_map,
-            temperature_to_humidity_map,
-            humidity_to_location_map,
+            seed_ranges: parse_seeds(&sections[0]),
+            seed_to_soil_map: parse_mapping(&sections[1]),
+            soil_to_fertilizer_map: parse_mapping(&sections[2]),
+            fertilizer_to_water_map: parse_mapping(&sections[3]),
+            water_to_light_map: parse_mapping(&sections[4]),
+            light_to_temperature_map: parse_mapping(&sections[5]),
+            temperature_to_humidity_map: parse_mapping(&sections[6]),
+            humidity_to_location_map: parse_mapping(&sections[7]),
         }
     }
 }
@@ -152,21 +224,19 @@ impl From<&String> for Almanac {
 fn main() {
     let input = std::fs::read_to_string(RESOURCE_FILE_PATH).expect("resource file can be loaded");
 
-    let almanac = Almanac::from(&input);
+    let almanac = Almanac::from(input.as_str());
 
-    let result: i64 = almanac.seeds
+    let soil_ranges = almanac.seed_to_soil_map.apply_ranges(&almanac.seed_ranges);
+    let fertilizer_ranges = almanac.soil_to_fertilizer_map.apply_ranges(&soil_ranges);
+    let water_ranges = almanac.fertilizer_to_water_map.apply_ranges(&fertilizer_ranges);
+    let light_ranges = almanac.water_to_light_map.apply_ranges(&water_ranges);
+    let temperature_ranges = almanac.light_to_temperature_map.apply_ranges(&light_ranges);
+    let humidity_ranges = almanac.temperature_to_humidity_map.apply_ranges(&temperature_ranges);
+    let location_ranges = almanac.humidity_to_location_map.apply_ranges(&humidity_ranges);
+
+    let result = location_ranges
         .iter()
-        .map(|seed| {
-            let soil = almanac.seed_to_soil_map.resolve(*seed);
-            let fertilizer = almanac.soil_to_fertilizer_map.resolve(soil);
-            let water = almanac.fertilizer_to_water_map.resolve(fertilizer);
-            let light = almanac.water_to_light_map.resolve(water);
-            let temperature = almanac.light_to_temperature_map.resolve(light);
-            let humidity = almanac.temperature_to_humidity_map.resolve(temperature);
-            let location = almanac.humidity_to_location_map.resolve(humidity);
-
-            location
-        })
+        .map(|ele| ele.start)
         .min()
         .unwrap();
 
