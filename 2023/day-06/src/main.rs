@@ -2,8 +2,8 @@
 
 #[derive(Copy, Clone, Debug)]
 struct Race {
-    time: i32,
-    distance: i32,
+    time: i64,
+    distance: i64,
 }
 
 impl Race {
@@ -24,7 +24,7 @@ impl From<&str> for RaceTable {
         assert!(input.lines().nth(0).unwrap().starts_with("Time:"));
         assert!(input.lines().nth(1).unwrap().starts_with("Distance:"));
 
-        let parse_column = |i: usize| -> Vec<i32> {
+        let parse_column = |i: usize| -> i64 {
             input
                 .lines()
                 .nth(i)
@@ -32,24 +32,25 @@ impl From<&str> for RaceTable {
                 .split(' ')
                 .skip(1)
                 .filter(|l| !l.is_empty())
-                .map(|ele| ele.parse::<i32>().unwrap())
-                .collect()
+                .map(|ele| ele.to_string())
+                .reduce(|lhs,rhs| lhs + &rhs)
+                .unwrap()
+                .parse::<i64>()
+                .unwrap()
         };
 
-        let time_entries: Vec<i32> = parse_column(0);
-        let distance_entries: Vec<i32> = parse_column(1);
+        let time: i64 = parse_column(0);
+        let distance: i64 = parse_column(1);
 
-        assert_eq!(time_entries.len(), distance_entries.len());
-
-        RaceTable(
-            (0..time_entries.len())
-                .map(|i| {
+        RaceTable (
+            Vec::from(
+                [
                     Race {
-                        time: time_entries[i],
-                        distance: distance_entries[i],
+                        time,
+                        distance,
                     }
-                })
-                .collect()
+                ]
+            )
         )
     }
 }
@@ -66,12 +67,11 @@ impl RaceTable {
 #[test]
 fn example() {
     static EXAMPLE_INPUT: &str = include_str!("../res/example");
-    static EXAMPLE_ANSWER: usize = 288;
+    static EXAMPLE_ANSWER: usize = 71503;
 
     let race_table = RaceTable::from(EXAMPLE_INPUT);
 
     let result: usize = race_table.eval();
-
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
