@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Copy, Hash, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Card {
+    Joker = 1,
     Two = 2,
     Three = 3,
     Four = 4,
@@ -11,10 +12,9 @@ enum Card {
     Eight = 8,
     Nine = 9,
     Ten = 10,
-    Jack = 11,
-    Queen = 12,
-    King = 13,
-    Ace = 14,
+    Queen = 11,
+    King = 12,
+    Ace = 13,
 }
 
 impl Card {
@@ -23,7 +23,6 @@ impl Card {
             'A' => Some(Card::Ace),
             'K' => Some(Card::King),
             'Q' => Some(Card::Queen),
-            'J' => Some(Card::Jack),
             'T' => Some(Card::Ten),
             '9' => Some(Card::Nine),
             '8' => Some(Card::Eight),
@@ -33,6 +32,7 @@ impl Card {
             '4' => Some(Card::Four),
             '3' => Some(Card::Three),
             '2' => Some(Card::Two),
+            'J' => Some(Card::Joker),
             _ => None
         }
     }
@@ -104,22 +104,67 @@ impl Hand {
         assert!(!card_map.is_empty());
         assert_eq!(card_map.values().sum::<i32>(), 5);
 
-        if card_map.values().any(|v| *v == 5) {
+        let n_joker = card_map.get(&Card::Joker).unwrap_or(&0);
+        let jokerless_card_map: HashMap<&Card, &i32> = card_map.iter().filter(|(k,_)| **k != Card::Joker).collect();
+
+        let is_five_of_a_kind = {
+            let without_joker = card_map.values().any(|v| *v == 5);
+            let with_joker = jokerless_card_map.values().any(|v| **v == (5 - n_joker));
+
+            without_joker || with_joker
+        };
+
+        let is_four_of_a_kind = {
+            let without_joker = card_map.values().any(|v| *v == 4);
+            let with_joker = jokerless_card_map.values().any(|v| **v == (4 - n_joker));
+
+            !is_five_of_a_kind && (without_joker || with_joker)
+        };
+
+        let is_full_house = {
+            let without_joker = card_map.values().any(|v| *v == 3) && card_map.values().any(|v| *v == 2);
+            let with_joker = jokerless_card_map.len() == 2 && jokerless_card_map.values().all(|v| **v == 2);
+
+            !is_four_of_a_kind && (without_joker || with_joker)
+        };
+
+        let is_three_of_a_kind = {
+            let without_joker = card_map.values().any(|v| *v == 3);
+            let with_joker = jokerless_card_map.values().any(|v| **v == (3 - n_joker));
+
+            !is_full_house && (without_joker || with_joker)
+        };
+
+        let is_two_pair = {
+            let without_joker = card_map.values().filter(|v| **v == 2).count() == 2;
+            let with_joker = false; // impossible
+
+            !is_three_of_a_kind && (without_joker || with_joker)
+        };
+
+        let is_one_pair = {
+            let without_joker = card_map.values().filter(|v| **v == 2).count() == 1;
+            let with_joker = n_joker >= &1;
+
+            !is_two_pair && (without_joker || with_joker)
+        };
+
+        if  is_five_of_a_kind {
             HandType::FiveOfAKind
         }
-        else if card_map.values().any(|v| *v == 4) {
+        else if is_four_of_a_kind {
             HandType::FourOfAKind
         }
-        else if card_map.values().any(|v| *v == 3) && card_map.values().any(|v| *v == 2) {
+        else if is_full_house {
             HandType::FullHouse
         }
-        else if card_map.values().any(|v| *v == 3) {
+        else if is_three_of_a_kind {
             HandType::ThreeOfAKind
         }
-        else if card_map.values().filter(|v| **v == 2).count() == 2 {
+        else if is_two_pair {
             HandType::TwoPair
         }
-        else if card_map.values().filter(|v| **v == 2).count() == 1 {
+        else if is_one_pair {
             HandType::OnePair
         }
         else {
@@ -159,7 +204,7 @@ impl HandAndBid {
 #[test]
 fn example() {
     static EXAMPLE_INPUT: &str = include_str!("../res/example");
-    static EXAMPLE_ANSWER: usize = 6440;
+    static EXAMPLE_ANSWER: usize = 5905;
 
     let mut hands_with_bids: Vec<HandAndBid> = EXAMPLE_INPUT
         .lines()
