@@ -57,7 +57,7 @@ impl InstructionsAndNetwork {
         InstructionsAndNetwork { instructions, network }
     }
 
-    fn n_steps_to_reach_target(Self { instructions, network }: &Self) -> usize {
+    fn solve_part_1(Self { instructions, network }: &Self) -> usize {
         let mut step_counter: usize = 0;
         let mut curr_node_ids: Vec<&String> = network
             .keys()
@@ -88,6 +88,59 @@ impl InstructionsAndNetwork {
 
         step_counter
     }
+
+    fn solve_part_2(Self{ instructions, network }: &Self) -> usize {
+        let starting_ids: Vec<&String> = network
+            .keys()
+            .filter(|k| k.ends_with("A"))
+            .collect();
+
+        let intervals: Vec<usize> = starting_ids
+            .iter()
+            .map(|id| {
+                let mut ends_at: Vec<usize> = Vec::new();
+
+                let mut curr_id = *id;
+                let mut step_counter: usize = 0;
+                loop {
+                    if curr_id.ends_with("Z") {
+                        ends_at.push(step_counter as usize);
+                    }
+
+                    if ends_at.len() >= 10 {
+                        break;
+                    }
+
+                    let curr_node = &network[curr_id];
+
+                    let curr_instruction = &instructions[step_counter % instructions.len()];
+                    let next_id = match *curr_instruction {
+                        Instruction::Left => &curr_node.left,
+                        Instruction::Right => &curr_node.right,
+                    };
+
+                    curr_id = next_id;
+                    step_counter += 1;
+                }
+
+                let diffs: Vec<usize> = ends_at.windows(2).map(|w| w[1] - w[0]).collect();
+                assert_eq!(diffs.len(), 9);
+                assert!(diffs.windows(2).all(|w| w[0] == w[1]));
+
+                diffs[0]
+            })
+            .collect();
+
+        let least_common_multiple = intervals
+            .iter()
+            .map(|i| num::integer::lcm(*i, *i))
+            .reduce(|lhs, rhs| {
+                num::integer::lcm(lhs, rhs)
+            })
+            .unwrap();
+
+        least_common_multiple
+    }
 }
 
 #[test]
@@ -97,7 +150,7 @@ fn example_1() {
 
     let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
 
-    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
+    let result = InstructionsAndNetwork::solve_part_1(&data);
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
@@ -108,7 +161,7 @@ fn example_2() {
 
     let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
 
-    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
+    let result = InstructionsAndNetwork::solve_part_1(&data);
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
@@ -119,7 +172,7 @@ fn example_3() {
 
     let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
 
-    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
+    let result = InstructionsAndNetwork::solve_part_2(&data);
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
@@ -128,6 +181,6 @@ fn main() {
 
     let data = InstructionsAndNetwork::parse(INPUT);
 
-    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
+    let result = InstructionsAndNetwork::solve_part_2(&data);
     println!("result={result}");
 }
