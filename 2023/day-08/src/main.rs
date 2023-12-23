@@ -57,21 +57,32 @@ impl InstructionsAndNetwork {
         InstructionsAndNetwork { instructions, network }
     }
 
-    fn n_step_to_reach_target(Self { instructions, network }: &Self) -> usize {
+    fn n_steps_to_reach_target(Self { instructions, network }: &Self) -> usize {
         let mut step_counter: usize = 0;
-        let mut curr_node_id: String = String::from("AAA");
+        let mut curr_node_ids: Vec<&String> = network
+            .keys()
+            .filter(|key| key.ends_with("A"))
+            .collect();
 
-        while curr_node_id != "ZZZ" {
+        while !curr_node_ids.iter().all(|id| id.ends_with("Z")) {
             let instruction_index = step_counter % instructions.len();
             let instruction = &instructions[instruction_index];
-            let node = &network[&curr_node_id];
+            let nodes: Vec<&Node> = curr_node_ids
+                .iter()
+                .map(|id| network.get(*id).unwrap())
+                .collect();
 
-            let next_node_id = match instruction {
-                Instruction::Left => &node.left,
-                Instruction::Right => &node.right,
-            };
+            let next_node_ids: Vec<&String> = nodes
+                .iter()
+                .map(|node| {
+                    match instruction {
+                        Instruction::Left => &node.left,
+                        Instruction::Right => &node.right,
+                    }
+                })
+                .collect();
 
-            curr_node_id = String::from(next_node_id);
+            curr_node_ids = next_node_ids;
             step_counter += 1;
         }
 
@@ -86,7 +97,7 @@ fn example_1() {
 
     let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
 
-    let result = InstructionsAndNetwork::n_step_to_reach_target(&data);
+    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
@@ -97,7 +108,18 @@ fn example_2() {
 
     let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
 
-    let result = InstructionsAndNetwork::n_step_to_reach_target(&data);
+    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
+    assert_eq!(result, EXAMPLE_ANSWER);
+}
+
+#[test]
+fn example_3() {
+    static EXAMPLE_INPUT: &str = include_str!("../res/example_3");
+    static EXAMPLE_ANSWER: usize = 6;
+
+    let data = InstructionsAndNetwork::parse(EXAMPLE_INPUT);
+
+    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
     assert_eq!(result, EXAMPLE_ANSWER);
 }
 
@@ -106,6 +128,6 @@ fn main() {
 
     let data = InstructionsAndNetwork::parse(INPUT);
 
-    let result = InstructionsAndNetwork::n_step_to_reach_target(&data);
+    let result = InstructionsAndNetwork::n_steps_to_reach_target(&data);
     println!("result={result}");
 }
