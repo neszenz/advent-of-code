@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use cartesian::cartesian;
+
 const NORTH: (i32, i32) = (-1, 0);
 const SOUTH: (i32, i32) = (1, 0);
 const EAST: (i32, i32) = (0, 1);
@@ -13,7 +15,9 @@ enum Tile {
     NorthWestPipe,
     SouthWestPipe,
     SouthEastPipe,
-    Ground,
+    GroundUndecided,
+    GroundClockwise,
+    GroundCounterClockwise,
     Start,
 }
 
@@ -26,7 +30,7 @@ impl Tile {
             'J' => Self::NorthWestPipe,
             '7' => Self::SouthWestPipe,
             'F' => Self::SouthEastPipe,
-            '.' => Self::Ground,
+            '.' => Self::GroundUndecided,
             'S' => Self::Start,
             unknown => panic!("unknown tile char {unknown}"),
         }
@@ -40,7 +44,9 @@ impl Tile {
             Tile::NorthWestPipe => '┘',
             Tile::SouthWestPipe => '┐',
             Tile::SouthEastPipe => '┌',
-            Tile::Ground => '·',
+            Tile::GroundUndecided => '·',
+            Tile::GroundClockwise => 'C',
+            Tile::GroundCounterClockwise => 'Ɔ',
             Tile::Start => '┼',
         }
     }
@@ -53,7 +59,9 @@ impl Tile {
             Tile::NorthWestPipe => [NORTH, WEST].into(),
             Tile::SouthWestPipe => [SOUTH, WEST].into(),
             Tile::SouthEastPipe => [SOUTH, EAST].into(),
-            Tile::Ground => [].into(),
+            Tile::GroundUndecided => [].into(),
+            Tile::GroundClockwise => [].into(),
+            Tile::GroundCounterClockwise => [].into(),
             Tile::Start => [NORTH, SOUTH, EAST, WEST].into(),
         }
     }
@@ -166,48 +174,186 @@ impl TileMap {
             None => Vec::new(),
         }
     }
+
+    fn trace_loop(self: &Self) -> Vec<(i32, i32)> {
+        let start = self.start();
+
+        let connected_neighbors_of_start = self.connected_neighbors_of(start);
+        assert_eq!(connected_neighbors_of_start.len(), 2);
+
+        let mut path: Vec<(i32, i32)> = [start].into();
+        let mut curr_pos = connected_neighbors_of_start[0];
+
+        loop {
+            path.push(curr_pos);
+
+            let curr_connected_neighbors: Vec<(i32, i32)> = self
+                .connected_neighbors_of(curr_pos)
+                .iter()
+                .filter(|pos| !path.contains(pos))
+                .cloned()
+                .collect();
+
+            if curr_connected_neighbors.is_empty() {
+                break;
+            }
+
+            assert_eq!(curr_connected_neighbors.len(), 1);
+            let next_pos = curr_connected_neighbors[0];
+            curr_pos = next_pos;
+        }
+
+        path
+    }
 }
 
 fn solve_part_1(input: &str) -> i32 {
     let tile_map = TileMap::parse(input);
+    let pipe_loop = tile_map.trace_loop();
 
-    let start = tile_map.start();
+    assert!(pipe_loop.len() % 2 == 0);
+    (pipe_loop.len() / 2) as i32
+}
 
-    let connected_neighbors_of_start = tile_map.connected_neighbors_of(start);
-    assert_eq!(connected_neighbors_of_start.len(), 2);
+fn surrounding_clockwise_of((x, y): (i32, i32), x_max: i32, y_max: i32) -> Vec<(i32, i32)> {
+    let x_min = 0.max(x - 1);
+    let y_min = 0.max(y - 1);
 
-    let mut path: Vec<(i32, i32)> = [start].into();
-    let mut curr_pos = connected_neighbors_of_start[0];
+    [
+        (x - 1, y), // top
+        (x - 1, y + 1), // top-right
+        (x, y + 1), // right
+        (x + 1, y + 1), // bottom-right
+        (x + 1, y), // bottom
+        (x + 1, y - 1), // bottom-left
+        (x, y - 1), // left
+        (x - 1, y - 1), // top-left
+    ]
+        .iter()
+        .filter(|ele| x_min <= ele.0 && ele.0 <= x_max && y_min <= ele.1 && ele.1 <= y_max)
+        .cloned()
+        .collect::<Vec<(i32, i32)>>()
+}
 
-    loop {
-        path.push(curr_pos);
+fn solve_part_2(input: &str) -> usize {
+    let mut tile_map = TileMap::parse(input);
+    let pipe_loop = tile_map.trace_loop();
 
-        let curr_connected_neighbors: Vec<(i32, i32)> = tile_map
-            .connected_neighbors_of(curr_pos)
-            .iter()
-            .filter(|pos| !path.contains(pos))
-            .cloned()
-            .collect();
+    let collect_region_around = |pos: (i32, i32)| -> Vec<(i32, i32)> {
+        let mut collected: Vec<(i32, i32)> = [].into();
+        let mut horizon: Vec<(i32, i32)> = [pos].into();
 
-        if curr_connected_neighbors.is_empty() {
-            break;
+        while !horizon.is_empty() {
+            let curr_pos = horizon.pop().unwrap();
+
+            if !pipe_loop.contains(&curr_pos) && !collected.contains(&curr_pos) {
+                horizon.append(&mut surrounding_clockwise_of(curr_pos, tile_map.len_x - 1, tile_map.len_y - 1));
+                collected.push(curr_pos);
+            }
         }
 
-        assert_eq!(curr_connected_neighbors.len(), 1);
-        let next_pos = curr_connected_neighbors[0];
-        curr_pos = next_pos;
+        collected
+    };
+
+    let search_space: Vec<(i32, i32)> = cartesian!(0..tile_map.len_x, 0..tile_map.len_y).collect();
+    for curr_pos in search_space {
+        if pipe_loop.contains(&curr_pos) || [Tile::GroundClockwise, Tile::GroundCounterClockwise].contains(&tile_map.at(curr_pos).unwrap()) {
+            continue;
+        }
+
+        let mut loop_indices_in_clockwise_surrounding: Vec<usize> = surrounding_clockwise_of(curr_pos, tile_map.len_x - 1, tile_map.len_y - 1)
+            .iter()
+            .map(|pos|
+                match pipe_loop.iter().position(|ele| *ele == *pos) {
+                    Some(i) => Some(i),
+                    None => None,
+                }
+            )
+            .filter(|ele| ele.is_some())
+            .map(|ele| ele.unwrap())
+            .collect();
+
+        if loop_indices_in_clockwise_surrounding.len() <= 2 {
+            continue;
+        }
+
+        let is_clockwise_aligned = loop {
+            let all_accenting = loop_indices_in_clockwise_surrounding
+                .windows(2)
+                .all(|w| w[0] < w[1]);
+
+            let all_deccenting = loop_indices_in_clockwise_surrounding
+                .windows(2)
+                .all(|w| w[0] > w[1]);
+
+            if !all_accenting && !all_deccenting {
+                loop_indices_in_clockwise_surrounding.rotate_left(1);
+                continue;
+            }
+
+            break all_accenting;
+        };
+
+        let ground_type = if is_clockwise_aligned {
+            Tile::GroundClockwise
+        }
+        else {
+            Tile::GroundCounterClockwise
+        };
+
+        collect_region_around(curr_pos)
+            .iter()
+            .for_each(|p| tile_map.data[p.0 as usize][p.1 as usize] = ground_type);
     }
 
-    (path.len() / 2) as i32
+    tile_map.data.iter().for_each(|line| println!("{}", line.iter().map(|tile| tile.to_unicode()).collect::<String>()));
+
+    let inside_tile_type = {
+        match tile_map.at((0, 0)) {
+            Some(tile) => match tile {
+                Tile::GroundClockwise => Tile::GroundCounterClockwise,
+                Tile::GroundCounterClockwise => Tile::GroundClockwise,
+                surprise => panic!("tile at (0,0) is {surprise:?}, but should only be decided ground"),
+            },
+            None => panic!("tile_map at (0,0) should not be empty"),
+        }
+    };
+
+    tile_map.data
+        .iter()
+        .map(|line| line
+            .iter()
+            .filter(|tile| **tile == inside_tile_type)
+            .count()
+        )
+        .sum::<usize>()
 }
 
 #[test]
 fn example_1() {
-    let result: i32 = solve_part_1(include_str!("../res/example_1"));
+    let result = solve_part_1(include_str!("../res/example_1"));
     assert_eq!(result, 8);
 }
 
+#[test]
+fn example_2() {
+    let result = solve_part_2(include_str!("../res/example_2"));
+    assert_eq!(result, 4)
+}
+
+#[test]
+fn example_3() {
+    let result = solve_part_2(include_str!("../res/example_3"));
+    assert_eq!(result, 8)
+}
+
+#[test]
+fn example_4() {
+    let result = solve_part_2(include_str!("../res/example_4"));
+    assert_eq!(result, 10)
+}
+
 fn main() {
-    let result = solve_part_1(include_str!("../res/input"));
+    let result = solve_part_2(include_str!("../res/input"));
     println!("result={result}");
 }
