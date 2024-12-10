@@ -1,11 +1,3 @@
-//  S     S     S
-//    A   A   A  
-//      M M M    
-//  S A M X M A S
-//      M M M    
-//    A   A   A  
-//  S     S     S
-
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -34,23 +26,23 @@ impl WordSearch {
         new_word_search
     }
 
-    fn get(self: &Self, row_i: i32, column_j: i32) -> Option<char> {
+    fn is_char_at(self: &Self, expected_c: char, row_i: i32, column_j: i32) -> bool {
         if row_i < 0 || column_j < 0 {
-            return None;
+            return false;
         }
 
         let parsed_row_i = row_i as usize;
         if parsed_row_i >= self.0.len() {
-            return None;
+            return false;
         }
 
         let row = self.0.get(parsed_row_i).unwrap();
         let parsed_column_j = column_j as usize;
         if parsed_column_j >= row.len() {
-            return None;
+            return false;
         }
 
-        return Some(*row.get(parsed_column_j).unwrap());
+        *row.get(parsed_column_j).unwrap() == expected_c
     }
 
     fn n_rows(self: &Self) -> i32 {
@@ -66,14 +58,12 @@ impl WordSearch {
         }
     }
 
-    fn trace(self: &Self, start_i: i32, start_j: i32, step_i: i32, step_j: i32) -> bool {
+    fn trace_xmas(self: &Self, start_i: i32, start_j: i32, step_i: i32, step_j: i32) -> bool {
         let mut i = start_i;
         let mut j = start_j;
 
         for expected_c in ['X', 'M', 'A', 'S'] {
-            let Some(actual_c) = self.get(i, j) else { return false; };
-
-            if actual_c != expected_c {
+            if !self.is_char_at(expected_c, i, j) {
                 return false;
             }
 
@@ -83,15 +73,54 @@ impl WordSearch {
 
         return true;
     }
+
+    fn trace_x_mas(self: &Self, start_i: i32, start_j: i32) -> bool {
+        let center_fits = self.is_char_at('A', start_i, start_j);
+
+        // variations
+        //////////////////////////////////////
+        // M   M // M   S // S   S // S   M //
+        //   A   //   A   //   A   //   A   //
+        // S   S // M   S // M   M // S   M //
+        //////////////////////////////////////
+        let any_variation_fits = [
+            [('M', -1, -1), ('M', -1, 1), ('S', 1, -1), ('S', 1, 1)],
+            [('M', -1, -1), ('S', -1, 1), ('M', 1, -1), ('S', 1, 1)],
+            [('S', -1, -1), ('S', -1, 1), ('M', 1, -1), ('M', 1, 1)],
+            [('S', -1, -1), ('M', -1, 1), ('S', 1, -1), ('M', 1, 1)],
+        ]
+            .iter()
+            .any(|variations| variations
+                .iter()
+                .all(|expected_c_with_coordinates| {
+                    let (c, i, j) = expected_c_with_coordinates;
+                    self.is_char_at(*c, start_i + *i, start_j + *j)
+                })
+            )
+        ;
+
+        center_fits && any_variation_fits
+    }
 }
 
-fn solve(input: &str) -> usize {
+fn solve_part_1(input: &str) -> usize {
     let word_search = WordSearch::parse(input);
 
     let mut n_xmas_occurrences = 0;
 
     for i in 0..word_search.n_rows() {
         for j in 0..word_search.n_columns() {
+
+            // traces
+            ////////////////////
+            //  S     S     S //
+            //    A   A   A   //
+            //      M M M     //
+            //  S A M X M A S //
+            //      M M M     //
+            //    A   A   A   //
+            //  S     S     S //
+            ////////////////////
             let n_traces = [
                 (-1, -1),
                 (-1,  0),
@@ -102,7 +131,7 @@ fn solve(input: &str) -> usize {
                 ( 1,  0),
                 ( 1,  1),
             ].iter()
-                .filter(|ij| word_search.trace(i, j, ij.0, ij.1))
+                .filter(|ij| word_search.trace_xmas(i, j, ij.0, ij.1))
                 .count()
             ;
             n_xmas_occurrences += n_traces;
@@ -112,13 +141,36 @@ fn solve(input: &str) -> usize {
     n_xmas_occurrences
 }
 
+fn solve_part_2(input: &str) -> usize {
+    let word_search = WordSearch::parse(input);
+
+    let mut n_x_mas_occurrences = 0;
+
+    for i in 0..word_search.n_rows() {
+        for j in 0..word_search.n_columns() {
+            if word_search.trace_x_mas(i, j) {
+                n_x_mas_occurrences += 1;
+            }
+        }
+    }
+
+    n_x_mas_occurrences
+}
+
 #[test]
-fn example() {
-    let result = solve(include_str!("../res/example"));
+fn example_part_1() {
+    let result = solve_part_1(include_str!("../res/example"));
     assert_eq!(result, 18);
 }
 
+#[test]
+fn example_part_2() {
+    let result = solve_part_2(include_str!("../res/example"));
+    assert_eq!(result, 9);
+}
+
 fn main() {
-    let result = solve(include_str!("../res/input"));
-    println!("result={result}");
+    let result_part_1 = solve_part_1(include_str!("../res/input"));
+    let result_part_2 = solve_part_2(include_str!("../res/input"));
+    println!("result_part_1={result_part_1} result_part_2={result_part_2}");
 }
